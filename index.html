@@ -73,6 +73,14 @@
         .cry-text { font-size: 1.2rem; font-weight: bold; color: #e53e3e; margin-top: 10px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes shake { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        /* ===== 修改題目 彈出視窗 ===== */
+        #edit-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }
+        #edit-modal.show { display:flex; }
+        #edit-modal .modal-box { background:white; width:100%; max-width:560px; max-height:90vh; overflow-y:auto; border-radius:12px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.3); box-sizing:border-box; }
+        #edit-modal .modal-box h3 { margin:0 0 15px 0; }
+        #edit-modal .modal-box label { display:block; font-size:0.85rem; color:#4a5568; font-weight:bold; margin:0 0 4px 2px; }
+        #edit-modal .modal-box input, #edit-modal .modal-box select { width:100%; padding:12px; margin-bottom:12px; box-sizing:border-box; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem; background:white; }
     </style>
 </head>
 <body>
@@ -136,6 +144,24 @@
     </div>
 </div>
 
+
+<!-- 修改題目 彈出視窗 -->
+<div id="edit-modal" onclick="if(event.target===this) closeEditModal()">
+    <div class="modal-box">
+        <h3>✏️ 修改題目</h3>
+        <input type="hidden" id="modal-q-id" value="">
+        <label>口語句子</label>
+        <input type="text" id="modal-spoken" placeholder="輸入口語句子">
+        <label>正確手語語序 (多組答案用 | 隔開，詞彙用空格)</label>
+        <input type="text" id="modal-correct" placeholder="正確手語語序">
+        <label>分類</label>
+        <select id="modal-category"></select>
+        <div style="display:flex; gap:10px; margin-top:5px;">
+            <button type="button" id="modal-btn-save" onclick="saveEditModal()" style="flex:1; padding:12px; background:#ecc94b; color:#744210; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem;">更新題目</button>
+            <button type="button" onclick="closeEditModal()" style="flex:1; padding:12px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem;">取消</button>
+        </div>
+    </div>
+</div>
 <script>
     // 已嵌入您提供的 Firebase 資料庫網址
     const FIREBASE_URL = "https://word-420e5-default-rtdb.asia-southeast1.firebasedatabase.app"; 
@@ -991,16 +1017,43 @@
     function editQuestion(id) {
         const q = db.find(item => item.id === id);
         if (!q) return;
-        document.getElementById('in-spoken').value = q.spoken;
-        document.getElementById('in-correct').value = q.answers.map(a => a.join(' ')).join(' | ');
-        document.getElementById('in-category').value = q.category || '';
-        document.getElementById('edit-q-id').value = q.id;
-        
-        const btnSave = document.getElementById('btn-save');
-        btnSave.textContent = "更新題目";
-        btnSave.style.background = "#ecc94b";
-        btnSave.style.color = "#744210";
+        // 複製分類下拉選單的選項到彈出視窗
+        const modalSel = document.getElementById('modal-category');
+        modalSel.innerHTML = document.getElementById('in-category').innerHTML;
+        document.getElementById('modal-spoken').value = q.spoken;
+        document.getElementById('modal-correct').value = q.answers.map(a => a.join(' ')).join(' | ');
+        modalSel.value = q.category || '';
+        document.getElementById('modal-q-id').value = q.id;
+        document.getElementById('edit-modal').classList.add('show');
+        setTimeout(() => document.getElementById('modal-spoken').focus(), 50);
     }
+
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.remove('show');
+        document.getElementById('modal-q-id').value = '';
+    }
+
+    async function saveEditModal() {
+        const spoken = document.getElementById('modal-spoken').value.trim();
+        const correct = document.getElementById('modal-correct').value.trim();
+        const category = document.getElementById('modal-category').value.trim();
+        const editId = document.getElementById('modal-q-id').value;
+        if (!spoken || !correct) return alert("請填寫完整");
+        const answers = correct.split('|').map(group => group.trim().split(/\s+/));
+        const qIndex = db.findIndex(item => item.id == editId);
+        if (qIndex !== -1) {
+            db[qIndex].spoken = spoken;
+            db[qIndex].answers = answers;
+            db[qIndex].category = category;
+        }
+        closeEditModal();
+        document.getElementById('sync-bar').innerHTML = "⏳ 正在同步更新至雲端...";
+        document.getElementById('sync-bar').style.background = "#fffbeb";
+        document.getElementById('sync-bar').style.color = "#744210";
+        await saveToCloud();
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEditModal(); });
 
     async function deleteQuestion(id) {
         if (confirm("確定要刪除這道題目嗎？（這將會同步刪除雲端資料）")) {
