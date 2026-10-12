@@ -164,7 +164,7 @@
 </div>
 <script>
     // 已嵌入您提供的 Firebase 資料庫網址
-    const FIREBASE_URL = "https://word-420e5-default-rtdb.asia-southeast1.firebasedatabase.app"; 
+    const FIREBASE_URL = "https://order-competition-new-default-rtdb.asia-southeast1.firebasedatabase.app"; 
 
     let teams = JSON.parse(localStorage.getItem('SL_TEAMS_DATA')) || [{ name: "練習者", score: 0 }];
     let db = []; // 從雲端即時載入，預設為空
@@ -278,6 +278,8 @@
                 <div id="source-pool-${idx}" class="zone pool-area"></div>
             </div>
             <button class="btn-main" style="background:${color}" onclick="checkAnswer(${idx})">檢查答案</button>
+            <button class="btn-main" style="background:#fffbeb; color:#744210; border:1px solid #ecc94b; margin-top:5px;" onclick="toggleHint(${idx})">💡 正確手語語序</button>
+            <div id="hint-box-${idx}" style="display:none; margin-top:8px; padding:10px 12px; background:#fffbeb; border:1px dashed #ecc94b; border-radius:8px; color:#744210; font-weight:bold; line-height:1.6;"></div>
             <button class="btn-main" style="background:#edf2f7; color:#4a5568; margin-top:5px;" onclick="refreshSingleTeam(${idx})">🔄 換一題</button>
         `;
 
@@ -543,6 +545,24 @@
 
     function setupDropZone(zone, teamIdx) {
         // 新系統在全域事件處理，此處保留空函式以維持呼叫相容
+    }
+
+    // 💡 顯示／隱藏正確手語語序（供學生一直答不對時參考，不會加分）
+    function toggleHint(idx) {
+        const box = document.getElementById(`hint-box-${idx}`);
+        const data = teamCurrentQuestions[idx];
+        if (!box || !data) return;
+        if (box.style.display === 'block') {
+            box.style.display = 'none';
+            return;
+        }
+        box.innerHTML = '';
+        data.question.answers.forEach((ans, i) => {
+            const line = document.createElement('div');
+            line.textContent = (data.question.answers.length > 1 ? `答案${i + 1}：` : '正確語序：') + ans.join(' → ');
+            box.appendChild(line);
+        });
+        box.style.display = 'block';
     }
 
     function checkAnswer(teamIdx) {
@@ -824,18 +844,9 @@
     // 📂 刪除分類（題目保留，分類欄清空）
     async function deleteCategory(catName) {
         const count = db.filter(q => q.category === catName).length;
-        if (!confirm(`確定刪除分類「${catName}」嗎？\n該分類下的 ${count} 道題目將移至「無分類」。`)) return;
+        if (!confirm(`確定刪除分類「${catName}」嗎？
+該分類下的 ${count} 道題目將移至「無分類」。`)) return;
         db.forEach(q => { if (q.category === catName) q.category = ''; });
-        await saveToCloud();
-    }
-
-    // 📂 刪除分類並同時刪除該分類內所有題目
-    async function deleteCategoryWithQuestions(catName) {
-        const count = db.filter(q => q.category === catName).length;
-        if (!confirm(`⚠️ 確定要刪除分類「${catName}」並刪除其中全部 ${count} 道題目嗎？\n\n此操作無法復原，題目將從雲端永久移除！`)) return;
-        const idsToRemove = db.filter(q => q.category === catName).map(q => q.id);
-        db = db.filter(q => q.category !== catName);
-        selectedQuestionIds = selectedQuestionIds.filter(id => !idsToRemove.includes(id));
         await saveToCloud();
     }
 
@@ -908,9 +919,8 @@
                 <span style="font-size:0.8rem; color:#718096;">${catCheckedCount}/${qs.length} 已選</span>
                 ${catName ? `
                 <button onclick="event.stopPropagation(); renameCategory('${catName}')" style="padding:4px 8px; background:#ecc94b; color:#744210; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">✏️ 改名</button>
-                <button onclick="event.stopPropagation(); deleteCategory('${catName}')" style="padding:4px 8px; background:#fc8181; color:#742a2a; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">🗑 移至無分類</button>
+                <button onclick="event.stopPropagation(); deleteCategory('${catName}')" style="padding:4px 8px; background:#fc8181; color:#742a2a; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">🗑 刪除</button>
                 ` : ''}
-                <button onclick="event.stopPropagation(); deleteCategoryWithQuestions('${catName}')" style="padding:4px 8px; background:#c53030; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">🗑 刪除分類+題目</button>
             `;
             catHeader.addEventListener('click', () => {
                 collapsedCategories[catId] = !collapsedCategories[catId];
@@ -1017,7 +1027,6 @@
     function editQuestion(id) {
         const q = db.find(item => item.id === id);
         if (!q) return;
-        // 複製分類下拉選單的選項到彈出視窗
         const modalSel = document.getElementById('modal-category');
         modalSel.innerHTML = document.getElementById('in-category').innerHTML;
         document.getElementById('modal-spoken').value = q.spoken;
