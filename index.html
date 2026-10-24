@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手語語序競賽系統 - 雲端即時同步版</title>
+    <title>手語語序競賽系統 - 管理端</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root {
             --primary: #4a90e2; --success: #48bb78; --danger: #f56565; --bg: #f3f4f6;
@@ -61,6 +63,27 @@
         .btn-set { padding: 8px 15px; background: white; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; }
         .sync-status { padding: 8px; background: #edf2f7; text-align: center; border-radius: 8px; font-size: 0.9rem; font-weight: bold; color: #4a5568; margin-bottom: 15px; }
 
+        /* 後台收合功能 */
+        .admin-section > h3.collapsible-title { display:flex; align-items:center; gap:8px; margin:0; cursor:pointer; user-select:none; }
+        .admin-section > h3.collapsible-title .arrow { display:inline-block; width:1.2em; font-size:0.9em; color:#718096; transition:transform 0.2s; }
+        .admin-section.collapsed > h3.collapsible-title .arrow { transform:rotate(-90deg); }
+        .admin-section > .section-body { margin-top:15px; }
+        .admin-section.collapsed > .section-body { display:none; }
+        .admin-section > h3.collapsible-title:hover { color:var(--primary); }
+        .collapse-tools { display:flex; gap:8px; justify-content:flex-end; margin-bottom:12px; }
+
+        .answer-reveal-box {
+            display: none;
+            background: #fff7ed;
+            border: 2px dashed #d69e2e;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-weight: bold;
+            color: #92400e;
+            font-size: 1rem;
+        }
+        .answer-reveal-box.show { display: block; }
+
         .cry-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -73,14 +96,6 @@
         .cry-text { font-size: 1.2rem; font-weight: bold; color: #e53e3e; margin-top: 10px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes shake { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-
-        /* ===== 修改題目 彈出視窗 ===== */
-        #edit-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }
-        #edit-modal.show { display:flex; }
-        #edit-modal .modal-box { background:white; width:100%; max-width:560px; max-height:90vh; overflow-y:auto; border-radius:12px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.3); box-sizing:border-box; }
-        #edit-modal .modal-box h3 { margin:0 0 15px 0; }
-        #edit-modal .modal-box label { display:block; font-size:0.85rem; color:#4a5568; font-weight:bold; margin:0 0 4px 2px; }
-        #edit-modal .modal-box input, #edit-modal .modal-box select { width:100%; padding:12px; margin-bottom:12px; box-sizing:border-box; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem; background:white; }
     </style>
 </head>
 <body>
@@ -97,8 +112,13 @@
             <div id="dynamic-arenas-container"></div>
         </div>
         <div id="result-msg"></div>
-        <div style="margin-top: 20px; display: flex; gap: 10px;">
-            <button class="btn-main" style="background:#4a5568" onclick="loadNewQuestion()">全部換題 (同步更新)</button>
+        <label style="margin-top: 15px; display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-weight:bold; color:#4a5568;">
+            <input type="checkbox" id="auto-next-toggle" onchange="setAutoNext(this.checked)" style="width:18px; height:18px; cursor:pointer;">
+            ⏭️ 答對後自動換下一題（仍可按「🔄 換一題」手動換題）
+        </label>
+        <div style="margin-top: 12px; display: flex; gap: 10px;">
+            <button class="btn-main" style="background:#4a5568" onclick="loadNewQuestion(); sendCommand('newQuestion')">全部換題 (同步更新)</button>
+            <button id="btn-toggle-answers" class="btn-main" style="background:#d69e2e" onclick="toggleAnswers()">👁️ 公布正確答案</button>
         </div>
     </div>
     <div id="admin" class="content">
@@ -144,27 +164,9 @@
     </div>
 </div>
 
-
-<!-- 修改題目 彈出視窗 -->
-<div id="edit-modal" onclick="if(event.target===this) closeEditModal()">
-    <div class="modal-box">
-        <h3>✏️ 修改題目</h3>
-        <input type="hidden" id="modal-q-id" value="">
-        <label>口語句子</label>
-        <input type="text" id="modal-spoken" placeholder="輸入口語句子">
-        <label>正確手語語序 (多組答案用 | 隔開，詞彙用空格)</label>
-        <input type="text" id="modal-correct" placeholder="正確手語語序">
-        <label>分類</label>
-        <select id="modal-category"></select>
-        <div style="display:flex; gap:10px; margin-top:5px;">
-            <button type="button" id="modal-btn-save" onclick="saveEditModal()" style="flex:1; padding:12px; background:#ecc94b; color:#744210; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem;">更新題目</button>
-            <button type="button" onclick="closeEditModal()" style="flex:1; padding:12px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem;">取消</button>
-        </div>
-    </div>
-</div>
 <script>
     // 已嵌入您提供的 Firebase 資料庫網址
-    const FIREBASE_URL = "https://order-competition-new-default-rtdb.asia-southeast1.firebasedatabase.app"; 
+    const FIREBASE_URL = "https://word-420e5-default-rtdb.asia-southeast1.firebasedatabase.app"; 
 
     let teams = JSON.parse(localStorage.getItem('SL_TEAMS_DATA')) || [{ name: "練習者", score: 0 }];
     let db = []; // 從雲端即時載入，預設為空
@@ -173,6 +175,7 @@
     let collapsedCategories = {}; // 追蹤哪些分類被折疊
     let teamCurrentQuestions = [];
     let teamUsedQuestions = [];
+    let answersVisible = false; // 是否正在公布正確答案
     const teamColors = ['#e53e3e', '#3182ce', '#38a169', '#d69e2e', '#805ad5', '#319795', '#ed64a6'];
 
     // 🟢 從 Firebase 雲端獲取最新題庫
@@ -181,6 +184,8 @@
             const response = await fetch(`${FIREBASE_URL}/db.json`);
             const data = await response.json();
             db = data ? Object.values(data) : [];
+            // 將所有 id 強制轉為 Number 並去除浮點數（統一型態，避免字串/數字比對失敗）
+            db.forEach(q => { q.id = Math.round(Number(q.id)); });
             
             // 預設全選所有題目
             selectedQuestionIds = db.map(q => q.id);
@@ -196,16 +201,26 @@
         }
     }
 
-    // 🔵 將題庫推送到 Firebase 雲端
+    // 🔵 將完整狀態推送到 Firebase 雲端（db + teams + selectedIds）
     async function saveToCloud() {
         try {
             const uploadData = {};
             db.forEach(q => { uploadData[q.id] = q; });
             
-            await fetch(`${FIREBASE_URL}/db.json`, {
-                method: 'PUT',
-                body: JSON.stringify(uploadData)
-            });
+            await Promise.all([
+                fetch(`${FIREBASE_URL}/db.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(uploadData)
+                }),
+                fetch(`${FIREBASE_URL}/teams.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(teams.map(t => ({ name: t.name, score: t.score })))
+                }),
+                fetch(`${FIREBASE_URL}/selectedIds.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(selectedQuestionIds)
+                })
+            ]);
             await fetchCloudDB(); 
             renderAdminList();
             loadNewQuestion();
@@ -214,12 +229,40 @@
         }
     }
 
+    // 📡 送出換題指令給顯示端
+    async function sendCommand(action) {
+        try {
+            await fetch(`${FIREBASE_URL}/command.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ action, token: Date.now() })
+            });
+        } catch (e) { console.error('sendCommand failed', e); }
+    }
+
+    // 🔵 僅同步 teams 和 selectedIds（不重建題庫）
+    async function syncTeamsAndSelection() {
+        try {
+            await Promise.all([
+                fetch(`${FIREBASE_URL}/teams.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(teams.map(t => ({ name: t.name, score: t.score })))
+                }),
+                fetch(`${FIREBASE_URL}/selectedIds.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(selectedQuestionIds)
+                })
+            ]);
+        } catch (e) { console.error('syncTeamsAndSelection failed', e); }
+    }
+
     async function initGame() {
         renderScoreboard();
         renderTeamAdmin();
         await fetchCloudDB(); 
         renderAdminList();
         loadNewQuestion();
+        // 初始化時把目前的 teams 和 selectedIds 同步到雲端
+        await syncTeamsAndSelection();
     }
 
     // 🎯 取得目前有效（被勾選）的題庫子集
@@ -233,12 +276,19 @@
     }
 
     function loadNewQuestion() {
+        Object.keys(autoNextTimers).forEach(k => { clearTimeout(autoNextTimers[k]); delete autoNextTimers[k]; });
         if (!db.length) return;
         const container = document.getElementById('dynamic-arenas-container');
         container.innerHTML = '';
         teamCurrentQuestions = [];
         teamUsedQuestions = new Array(teams.length).fill().map(() => []);
         document.getElementById('result-msg').style.display = 'none';
+        answersVisible = false;
+        const btnToggle = document.getElementById('btn-toggle-answers');
+        if (btnToggle) {
+            btnToggle.textContent = '👁️ 公布正確答案';
+            btnToggle.style.background = '#d69e2e';
+        }
         
         const selectedQs = getUniqueQuestions(teams.length);
         teams.forEach((team, idx) => {
@@ -269,6 +319,7 @@
                 <div class="q-text-large">${q.spoken}</div>
                 <div style="background:var(--score-gold); padding:5px 12px; border-radius:50px; font-weight:900; color:#744210;">★ 5</div>
             </div>
+            <div id="answer-reveal-${idx}" class="answer-reveal-box${answersVisible ? ' show' : ''}">✅ 正確答案：${q.answers.map(a => a.join(' ')).join('　|　')}</div>
             <div class="labeled-box">
                 <div class="box-tag" style="background:#4a5568">語序區</div>
                 <div id="target-zone-${idx}" class="zone target-area"></div>
@@ -278,8 +329,6 @@
                 <div id="source-pool-${idx}" class="zone pool-area"></div>
             </div>
             <button class="btn-main" style="background:${color}" onclick="checkAnswer(${idx})">檢查答案</button>
-            <button class="btn-main" style="background:#fffbeb; color:#744210; border:1px solid #ecc94b; margin-top:5px;" onclick="toggleHint(${idx})">💡 正確手語語序</button>
-            <div id="hint-box-${idx}" style="display:none; margin-top:8px; padding:10px 12px; background:#fffbeb; border:1px dashed #ecc94b; border-radius:8px; color:#744210; font-weight:bold; line-height:1.6;"></div>
             <button class="btn-main" style="background:#edf2f7; color:#4a5568; margin-top:5px;" onclick="refreshSingleTeam(${idx})">🔄 換一題</button>
         `;
 
@@ -547,22 +596,39 @@
         // 新系統在全域事件處理，此處保留空函式以維持呼叫相容
     }
 
-    // 💡 顯示／隱藏正確手語語序（供學生一直答不對時參考，不會加分）
-    function toggleHint(idx) {
-        const box = document.getElementById(`hint-box-${idx}`);
-        const data = teamCurrentQuestions[idx];
-        if (!box || !data) return;
-        if (box.style.display === 'block') {
-            box.style.display = 'none';
-            return;
-        }
-        box.innerHTML = '';
-        data.question.answers.forEach((ans, i) => {
-            const line = document.createElement('div');
-            line.textContent = (data.question.answers.length > 1 ? `答案${i + 1}：` : '正確語序：') + ans.join(' → ');
-            box.appendChild(line);
+    function toggleAnswers() {
+        answersVisible = !answersVisible;
+        const btn = document.getElementById('btn-toggle-answers');
+        teamCurrentQuestions.forEach((data, idx) => {
+            const box = document.getElementById(`answer-reveal-${idx}`);
+            if (box) box.classList.toggle('show', answersVisible);
         });
-        box.style.display = 'block';
+        if (btn) {
+            btn.textContent = answersVisible ? '🙈 隱藏正確答案' : '👁️ 公布正確答案';
+            btn.style.background = answersVisible ? '#9ca3af' : '#d69e2e';
+        }
+    }
+
+    // ⏭️ 答對自動換題設定（預設開啟，狀態記在瀏覽器）
+    const AUTO_NEXT_DELAY = 2000; // 答對後等待毫秒數（讓彩帶與訊息先播完）
+    let autoNextEnabled = localStorage.getItem('SL_AUTO_NEXT') !== '0';
+    const autoNextTimers = {};
+
+    function setAutoNext(on) {
+        autoNextEnabled = on;
+        try { localStorage.setItem('SL_AUTO_NEXT', on ? '1' : '0'); } catch (e) {}
+        if (!on) { Object.keys(autoNextTimers).forEach(k => { clearTimeout(autoNextTimers[k]); delete autoNextTimers[k]; }); }
+    }
+
+    function scheduleAutoNext(teamIdx, solvedQuestionId) {
+        if (!autoNextEnabled || autoNextTimers[teamIdx]) return;
+        autoNextTimers[teamIdx] = setTimeout(() => {
+            delete autoNextTimers[teamIdx];
+            const cur = teamCurrentQuestions[teamIdx];
+            // 若期間已手動換題，就不再重複換
+            if (!autoNextEnabled || !cur || !cur.question || cur.question.id !== solvedQuestionId) return;
+            refreshSingleTeam(teamIdx);
+        }, AUTO_NEXT_DELAY);
     }
 
     function checkAnswer(teamIdx) {
@@ -591,6 +657,7 @@
                 renderScoreboard();
             }
             triggerConfettiFromTeam(teamIdx);
+            scheduleAutoNext(teamIdx, data.question.id);
         } else {
             msg.innerHTML = `❌ ${teams[teamIdx].name} 語序錯誤，請再調整`;
             msg.style.background = "#fee2e2";
@@ -632,6 +699,7 @@
     }
 
     function refreshSingleTeam(idx) {
+        if (autoNextTimers[idx]) { clearTimeout(autoNextTimers[idx]); delete autoNextTimers[idx]; }
         const activeDB = getFilteredDB();
         if (!activeDB.length) return;
         document.getElementById('result-msg').style.display = 'none';
@@ -738,6 +806,8 @@
             renderTeamAdmin();
             renderScoreboard();
             loadNewQuestion();
+            syncTeamsAndSelection();
+            sendCommand('newQuestion');
         }
     }
 
@@ -749,6 +819,8 @@
         renderTeamAdmin();
         renderScoreboard();
         loadNewQuestion();
+        syncTeamsAndSelection();
+        sendCommand('newQuestion');
     }
 
     function renderTeamAdmin() {
@@ -769,6 +841,7 @@
         teams[i].name = name || `組別 ${i+1}`;
         saveTeams();
         renderScoreboard();
+        syncTeamsAndSelection();
     }
 
     function deleteTeam(i) {
@@ -779,6 +852,8 @@
             renderTeamAdmin();
             renderScoreboard();
             loadNewQuestion();
+            syncTeamsAndSelection();
+            sendCommand('newQuestion');
         }
     }
 
@@ -791,6 +866,7 @@
         } else {
             selectedQuestionIds = selectedQuestionIds.filter(qId => qId !== id);
         }
+        syncTeamsAndSelection();
     }
 
     // 📂 分類管理：從 db 中收集所有分類
@@ -844,9 +920,18 @@
     // 📂 刪除分類（題目保留，分類欄清空）
     async function deleteCategory(catName) {
         const count = db.filter(q => q.category === catName).length;
-        if (!confirm(`確定刪除分類「${catName}」嗎？
-該分類下的 ${count} 道題目將移至「無分類」。`)) return;
+        if (!confirm(`確定刪除分類「${catName}」嗎？\n該分類下的 ${count} 道題目將移至「無分類」。`)) return;
         db.forEach(q => { if (q.category === catName) q.category = ''; });
+        await saveToCloud();
+    }
+
+    // 📂 刪除分類並同時刪除該分類內所有題目
+    async function deleteCategoryWithQuestions(catName) {
+        const count = db.filter(q => q.category === catName).length;
+        if (!confirm(`⚠️ 確定要刪除分類「${catName}」並刪除其中全部 ${count} 道題目嗎？\n\n此操作無法復原，題目將從雲端永久移除！`)) return;
+        const idsToRemove = db.filter(q => q.category === catName).map(q => q.id);
+        db = db.filter(q => q.category !== catName);
+        selectedQuestionIds = selectedQuestionIds.filter(id => !idsToRemove.includes(id));
         await saveToCloud();
     }
 
@@ -861,6 +946,7 @@
             }
         });
         renderAdminList();
+        syncTeamsAndSelection();
     }
 
     function renderAdminList() {
@@ -890,12 +976,16 @@
         // 總計列
         const totalChecked = selectedQuestionIds.length;
         const header = document.createElement('div');
-        header.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;";
+        header.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;";
         header.innerHTML = `
             <h3 style="margin:0;">題庫清單 <span style="font-size:0.85rem; color:#888; font-weight:normal;">（共 ${db.length} 題，已選 ${totalChecked} 題）</span></h3>
-            <div style="display:flex; gap:6px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; color:#4a5568; cursor:pointer;"><input type="checkbox" id="pdf-with-answers" ${window._pdfWithAnswers === false ? '' : 'checked'} onchange="window._pdfWithAnswers = this.checked" style="width:16px; height:16px;">含答案</label>
+                <button id="btn-export-pdf" onclick="exportSelectedPDF()" style="padding:6px 12px; background:#e53e3e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:bold;">📄 匯出勾選題目 PDF</button>
                 <button onclick="selectAll(true)" style="padding:6px 12px; background:#48bb78; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">全選</button>
                 <button onclick="selectAll(false)" style="padding:6px 12px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">全取消</button>
+                <button onclick="setAllCategoriesCollapsed(false)" style="padding:6px 12px; background:#805ad5; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">▼ 全部展開</button>
+                <button onclick="setAllCategoriesCollapsed(true)" style="padding:6px 12px; background:#553c9a; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">▶ 全部收合</button>
             </div>
         `;
         container.appendChild(header);
@@ -919,8 +1009,9 @@
                 <span style="font-size:0.8rem; color:#718096;">${catCheckedCount}/${qs.length} 已選</span>
                 ${catName ? `
                 <button onclick="event.stopPropagation(); renameCategory('${catName}')" style="padding:4px 8px; background:#ecc94b; color:#744210; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">✏️ 改名</button>
-                <button onclick="event.stopPropagation(); deleteCategory('${catName}')" style="padding:4px 8px; background:#fc8181; color:#742a2a; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">🗑 刪除</button>
+                <button onclick="event.stopPropagation(); deleteCategory('${catName}')" style="padding:4px 8px; background:#fc8181; color:#742a2a; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">🗑 移至無分類</button>
                 ` : ''}
+                <button onclick="event.stopPropagation(); deleteCategoryWithQuestions('${catName}')" style="padding:4px 8px; background:#c53030; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">🗑 刪除分類+題目</button>
             `;
             catHeader.addEventListener('click', () => {
                 collapsedCategories[catId] = !collapsedCategories[catId];
@@ -934,22 +1025,83 @@
 
             qs.forEach(q => {
                 const isChecked = selectedQuestionIds.includes(q.id) ? 'checked' : '';
+                const isEditing = currentInlineEditId === q.id;
                 const div = document.createElement('div');
-                div.style.cssText = "padding:10px 12px; background:white; margin:4px 0; border-radius:8px; border:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:8px;";
-                div.innerHTML = `
+                div.style.cssText = "margin:4px 0;";
+
+                // 題目列
+                const row = document.createElement('div');
+                row.style.cssText = `padding:10px 12px; background:${isEditing ? '#fffbeb' : 'white'}; border-radius:${isEditing ? '8px 8px 0 0' : '8px'}; border:1px solid ${isEditing ? '#ecc94b' : '#eee'}; border-bottom:${isEditing ? '0' : '1px solid #eee'}; display:flex; justify-content:space-between; align-items:center; gap:8px;`;
+                row.innerHTML = `
                     <input type="checkbox" ${isChecked} onchange="handleSelectToggle(${q.id}, this.checked); renderAdminList();" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
                     <div style="flex:1; min-width:0;">
                         <strong style="display:block; word-break:break-all;">${q.spoken}</strong>
                         <small style="color:#718096;">答案：${q.answers.map(a => a.join(' ')).join(' | ')}</small>
                     </div>
                     <div style="display:flex; gap:5px; flex-shrink:0;">
-                        <button onclick="editQuestion(${q.id})" style="background:#4a90e2; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.85rem;">修改</button>
+                        <button onclick="editQuestion(${q.id})" style="background:${isEditing ? '#ecc94b' : '#4a90e2'}; color:${isEditing ? '#744210' : 'white'}; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.85rem;">${isEditing ? '取消' : '修改'}</button>
                         <button onclick="deleteQuestion(${q.id})" style="background:#f56565; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.85rem;">刪除</button>
                     </div>
                 `;
+                div.appendChild(row);
+
+                // 內嵌編輯區
+                if (isEditing) {
+                    const editPanel = document.createElement('div');
+                    editPanel.style.cssText = "background:#fffbeb; border:1px solid #ecc94b; border-top:0; border-radius:0 0 8px 8px; padding:12px 14px; display:flex; flex-direction:column; gap:8px;";
+
+                    // 建立分類選項 HTML
+                    const cats = getCategories().filter(c => c !== '');
+                    const catOptions = cats.map(c => `<option value="${c}" ${q.category === c ? 'selected' : ''}>📁 ${c}</option>`).join('');
+
+                    editPanel.innerHTML = `
+                        <input type="text" id="inline-spoken-${q.id}" value="${q.spoken.replace(/"/g, '&quot;')}" placeholder="口語句子" style="width:100%; padding:10px; box-sizing:border-box; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem;">
+                        <input type="text" id="inline-correct-${q.id}" value="${q.answers.map(a => a.join(' ')).join(' | ').replace(/"/g, '&quot;')}" placeholder="正確手語語序 (多組答案用 | 隔開)" style="width:100%; padding:10px; box-sizing:border-box; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem;">
+                        <select id="inline-category-${q.id}" style="width:100%; padding:10px; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem; background:white;">
+                            <option value="" ${!q.category ? 'selected' : ''}>📂 無分類</option>
+                            ${catOptions}
+                        </select>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="saveInlineEdit(${q.id})" style="flex:1; padding:10px; background:#48bb78; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem;">✅ 儲存修改</button>
+                            <button onclick="cancelInlineEdit()" style="flex:1; padding:10px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-size:1rem;">✖ 取消</button>
+                        </div>
+                    `;
+                    div.appendChild(editPanel);
+                }
+
                 qList.appendChild(div);
             });
             container.appendChild(qList);
+        });
+    }
+
+    // 📂 全部分類展開 / 收合
+    function setAllCategoriesCollapsed(collapsed) {
+        const cats = new Set(db.map(q => q.category || ''));
+        cats.forEach(c => { collapsedCategories['cat_' + (c || '__none__')] = collapsed; });
+        renderAdminList();
+    }
+
+    // 🔽 後台區塊收合功能（狀態會記在瀏覽器）
+    function initCollapsibleSections() {
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem('SL_ADMIN_COLLAPSED')) || {}; } catch (e) {}
+        document.querySelectorAll('#admin .admin-section').forEach((sec, idx) => {
+            const title = sec.querySelector(':scope > h3');
+            if (!title || sec.querySelector(':scope > .section-body')) return;
+            const body = document.createElement('div');
+            body.className = 'section-body';
+            Array.from(sec.children).forEach(ch => { if (ch !== title) body.appendChild(ch); });
+            sec.appendChild(body);
+            title.classList.add('collapsible-title');
+            title.insertAdjacentHTML('afterbegin', '<span class="arrow">▼</span>');
+            const key = 'sec' + idx;
+            if (saved[key]) sec.classList.add('collapsed');
+            title.addEventListener('click', () => {
+                sec.classList.toggle('collapsed');
+                saved[key] = sec.classList.contains('collapsed');
+                try { localStorage.setItem('SL_ADMIN_COLLAPSED', JSON.stringify(saved)); } catch (e) {}
+            });
         });
     }
 
@@ -960,6 +1112,140 @@
             selectedQuestionIds = [];
         }
         renderAdminList();
+        syncTeamsAndSelection();
+    }
+
+    // 📄 匯出勾選題目為 PDF（預習用）：直接下載 PDF 檔
+    function exportSelectedPDF() {
+        const qs = db.filter(q => selectedQuestionIds.includes(q.id));
+        if (qs.length === 0) { alert("⚠️ 尚未勾選任何題目，請先勾選要匯出的題目！"); return; }
+        const withAns = document.getElementById('pdf-with-answers') ? document.getElementById('pdf-with-answers').checked : true;
+        const esc = t => String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+        const groups = {};
+        qs.forEach(q => { const c = q.category || ''; (groups[c] = groups[c] || []).push(q); });
+        const catOrder = Object.keys(groups).sort((a, b) => a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'zh-TW'));
+
+        let n = 0, body = '';
+        catOrder.forEach(cat => {
+            body += `<h2>${esc(cat || '無分類')}（${groups[cat].length} 題）</h2><table><thead><tr><th class="no">#</th><th class="sp">口語句子</th><th>手語語序${withAns ? '' : '（請自行填寫）'}</th></tr></thead><tbody>`;
+            groups[cat].forEach(q => {
+                n++;
+                let ansHtml;
+                if (withAns) {
+                    ansHtml = (q.answers || []).map((a, i, arr) =>
+                        `<div class="ans">${arr.length > 1 ? `<span class="alt">答案${i + 1}</span>` : ''}${a.map(w => `<span class="w">${esc(w)}</span>`).join('<span class="arr">→</span>')}</div>`
+                    ).join('');
+                } else {
+                    ansHtml = '<div class="blank"></div>';
+                }
+                body += `<tr><td class="no">${n}</td><td class="sp">${esc(q.spoken)}</td><td>${ansHtml}</td></tr>`;
+            });
+            body += '</tbody></table>';
+        });
+
+        const today = new Date().toLocaleDateString('zh-TW');
+        if (typeof html2canvas === 'undefined' || !window.jspdf) { alert("⚠️ PDF 元件載入失敗，請檢查網路連線後重新整理頁面再試一次。"); return; }
+
+        const css = `
+            #pdf-root { width:760px; background:#fff; padding:10px 6px; box-sizing:border-box; font-family:'PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif; color:#1a202c; }
+            #pdf-root h1 { font-size:26px; margin:0 0 6px; }
+            #pdf-root .meta { color:#718096; font-size:13px; margin-bottom:6px; }
+            #pdf-root .nameline { font-size:15px; margin:10px 0 4px; }
+            #pdf-root h2 { font-size:17px; margin:20px 0 8px; padding:5px 10px; background:#edf2f7; border-left:5px solid #4a90e2; }
+            #pdf-root table { width:100%; border-collapse:collapse; font-size:15px; }
+            #pdf-root th, #pdf-root td { border:1px solid #cbd5e0; padding:8px 10px; vertical-align:top; text-align:left; }
+            #pdf-root th { background:#f7fafc; font-size:14px; }
+            #pdf-root tr { page-break-inside:avoid; }
+            #pdf-root .no { width:34px; text-align:center; color:#718096; }
+            #pdf-root .sp { width:36%; }
+            #pdf-root .ans { margin:2px 0; line-height:2.2; }
+            #pdf-root .w { display:inline-block; background:#ebf4ff; border:1px solid #90cdf4; border-radius:5px; padding:0 9px; font-weight:bold; line-height:1.7; }
+            #pdf-root .arr { color:#a0aec0; margin:0 4px; }
+            #pdf-root .alt { font-size:12px; color:#d69e2e; font-weight:bold; margin-right:6px; }
+            #pdf-root .blank { height:34px; border-bottom:1px dashed #a0aec0; }
+        `;
+        const html = `<div id="pdf-root">
+            <h1>🤟 手語語序預習題目</h1>
+            <div class="meta">共 ${qs.length} 題　｜　列印日期：${today}</div>
+            <div class="nameline">班級：__________　姓名：__________</div>
+            ${body}
+        </div>`;
+
+        const oldHost = document.getElementById('pdf-render-host');
+        if (oldHost) oldHost.remove();
+        const oldStyle = document.getElementById('pdf-render-style');
+        if (oldStyle) oldStyle.remove();
+        const styleEl = document.createElement('style');
+        styleEl.id = 'pdf-render-style';
+        styleEl.textContent = css;
+        document.head.appendChild(styleEl);
+
+        // 全螢幕白色遮罩，內容固定貼在視窗左上角（避開捲動 / 置中造成的位移）
+        const host = document.createElement('div');
+        host.id = 'pdf-render-host';
+        host.style.cssText = 'position:fixed; left:0; top:0; width:100vw; height:100vh; z-index:2147483000; background:#fff; overflow:hidden;';
+        host.innerHTML = html + '<div style="position:fixed; right:16px; bottom:16px; background:#2d3748; color:#fff; padding:10px 16px; border-radius:8px; font-size:14px; z-index:2147483001;">⏳ 正在產生 PDF，請稍候…</div>';
+        document.body.appendChild(host);
+
+        const btn = document.getElementById('btn-export-pdf');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 產生中…'; }
+        const fileName = `手語語序預習題目_${new Date().toISOString().slice(0, 10)}.pdf`;
+        const target = host.querySelector('#pdf-root');
+
+        const cleanup = () => {
+            host.remove(); styleEl.remove();
+            if (btn) { btn.disabled = false; btn.textContent = '📄 匯出勾選題目 PDF'; }
+        };
+
+        const ready = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+        ready.then(() => new Promise(r => setTimeout(r, 300))).then(async () => {
+            const SCALE = 2;
+            const PX_PER_MM = 4;                 // 內容寬 760px ↔ 190mm
+            const PAGE_H_PX = 277 * PX_PER_MM;   // A4 去掉上下 10mm 邊界
+            const tRect = target.getBoundingClientRect();
+            const totalH = Math.ceil(target.scrollHeight);
+
+            // 可換頁的位置：分類標題、各表格的第 2 列起的每一列（避免切在一題中間或標題孤立）
+            const breaks = [];
+            target.querySelectorAll('h2').forEach(el => breaks.push(Math.round(el.getBoundingClientRect().top - tRect.top)));
+            target.querySelectorAll('table').forEach(tb => {
+                const rows = tb.querySelectorAll('tbody tr');
+                rows.forEach((tr, i) => { if (i > 0) breaks.push(Math.round(tr.getBoundingClientRect().top - tRect.top)); });
+            });
+            breaks.sort((x, y) => x - y);
+
+            const canvas = await html2canvas(target, {
+                scale: SCALE, backgroundColor: '#ffffff', useCORS: true,
+                scrollX: 0, scrollY: 0, x: 0, y: 0, width: target.offsetWidth, height: totalH,
+                windowWidth: document.documentElement.clientWidth, windowHeight: document.documentElement.clientHeight
+            });
+
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+            let start = 0, page = 0;
+            while (start < totalH - 1) {
+                let end = start + PAGE_H_PX;
+                if (end >= totalH) { end = totalH; }
+                else {
+                    const cands = breaks.filter(y => y > start + 40 && y <= end);
+                    if (cands.length) end = cands[cands.length - 1];
+                }
+                const sliceH = Math.max(1, Math.round((end - start) * SCALE));
+                const slice = document.createElement('canvas');
+                slice.width = canvas.width; slice.height = sliceH;
+                const ctx = slice.getContext('2d');
+                ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, slice.width, slice.height);
+                ctx.drawImage(canvas, 0, Math.round(start * SCALE), canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+                if (page > 0) pdf.addPage();
+                pdf.addImage(slice.toDataURL('image/jpeg', 0.95), 'JPEG', 10, 10, 190, (end - start) / PX_PER_MM);
+                start = end; page++;
+            }
+            pdf.save(fileName);
+        }).catch(err => {
+            console.error(err);
+            alert("❌ PDF 產生失敗，請重新整理後再試。\n" + (err && err.message ? err.message : ''));
+        }).finally(cleanup);
     }
 
     // 📦 離線功能：匯出題庫為 JSON 檔案
@@ -1004,15 +1290,29 @@
                     return;
                 }
 
-                if (confirm(`確定要匯入 ${newQuestions.length} 道題目嗎？這將會覆蓋目前本地與雲端的完整題庫內容！`)) {
-                    db = newQuestions;
-                    
+                if (confirm(`確定要匯入 ${newQuestions.length} 道題目嗎？這些題目將會新增至目前題庫（不會覆蓋原有題目）。`)) {
+                    // 取得現有題目的 spoken 文字集合，避免重複匯入相同題目
+                    const existingSpoken = new Set(db.map(q => q.spoken));
+                    let addedCount = 0;
+                    let skippedCount = 0;
+
+                    newQuestions.forEach(q => {
+                        if (existingSpoken.has(q.spoken)) {
+                            skippedCount++;
+                        } else {
+                            // 重新產生 id 避免衝突（使用整數避免浮點數比對問題）
+                            db.push({ ...q, id: Date.now() * 1000 + Math.floor(Math.random() * 1000) });
+                            existingSpoken.add(q.spoken);
+                            addedCount++;
+                        }
+                    });
+
                     document.getElementById('sync-bar').innerHTML = "⏳ 正在將匯入的資料同步至雲端...";
                     document.getElementById('sync-bar').style.background = "#fffbeb";
                     document.getElementById('sync-bar').style.color = "#744210";
 
                     await saveToCloud(); // 自動推送到 Firebase
-                    alert("🎉 題庫匯入並已成功同步至雲端！");
+                    alert(`🎉 匯入完成！\n✅ 新增：${addedCount} 道題目\n⏭️ 略過（已存在）：${skippedCount} 道題目`);
                 }
             } catch (err) {
                 alert("讀取檔案失敗！請確認該檔案是否為正確的題庫匯出格式 (.json)。");
@@ -1024,45 +1324,43 @@
         reader.readAsText(file);
     }
 
+    let currentInlineEditId = null;
+
     function editQuestion(id) {
-        const q = db.find(item => item.id === id);
-        if (!q) return;
-        const modalSel = document.getElementById('modal-category');
-        modalSel.innerHTML = document.getElementById('in-category').innerHTML;
-        document.getElementById('modal-spoken').value = q.spoken;
-        document.getElementById('modal-correct').value = q.answers.map(a => a.join(' ')).join(' | ');
-        modalSel.value = q.category || '';
-        document.getElementById('modal-q-id').value = q.id;
-        document.getElementById('edit-modal').classList.add('show');
-        setTimeout(() => document.getElementById('modal-spoken').focus(), 50);
+        id = Math.round(Number(id));
+        // 如果點同一題，取消
+        if (currentInlineEditId === id) {
+            cancelInlineEdit();
+            return;
+        }
+        currentInlineEditId = id;
+        renderAdminList();
     }
 
-    function closeEditModal() {
-        document.getElementById('edit-modal').classList.remove('show');
-        document.getElementById('modal-q-id').value = '';
+    function cancelInlineEdit() {
+        currentInlineEditId = null;
+        renderAdminList();
     }
 
-    async function saveEditModal() {
-        const spoken = document.getElementById('modal-spoken').value.trim();
-        const correct = document.getElementById('modal-correct').value.trim();
-        const category = document.getElementById('modal-category').value.trim();
-        const editId = document.getElementById('modal-q-id').value;
+    async function saveInlineEdit(id) {
+        id = Math.round(Number(id));
+        const spoken = document.getElementById(`inline-spoken-${id}`).value.trim();
+        const correct = document.getElementById(`inline-correct-${id}`).value.trim();
+        const category = document.getElementById(`inline-category-${id}`).value.trim();
         if (!spoken || !correct) return alert("請填寫完整");
         const answers = correct.split('|').map(group => group.trim().split(/\s+/));
-        const qIndex = db.findIndex(item => item.id == editId);
+        const qIndex = db.findIndex(item => item.id == id);
         if (qIndex !== -1) {
             db[qIndex].spoken = spoken;
             db[qIndex].answers = answers;
             db[qIndex].category = category;
         }
-        closeEditModal();
+        currentInlineEditId = null;
         document.getElementById('sync-bar').innerHTML = "⏳ 正在同步更新至雲端...";
         document.getElementById('sync-bar').style.background = "#fffbeb";
         document.getElementById('sync-bar').style.color = "#744210";
         await saveToCloud();
     }
-
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEditModal(); });
 
     async function deleteQuestion(id) {
         if (confirm("確定要刪除這道題目嗎？（這將會同步刪除雲端資料）")) {
@@ -1120,7 +1418,8 @@
         if(window.event && window.event.currentTarget) { window.event.currentTarget.classList.add('active'); }
     }
 
-    window.onload = initGame;
+    window.onload = function () { document.getElementById('auto-next-toggle').checked = autoNextEnabled; initCollapsibleSections(); initGame(); };
 </script>
 </body>
 </html>
+
